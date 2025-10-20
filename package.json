@@ -1,0 +1,14 @@
+{
+  "name": "travelbuddy-laravel",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "install:browser": "npx playwright install chromium",
+    "va:search": "node scripts/va/va_award_search.cjs",
+    "clean:va": "rimraf scripts/.pw-state storage/app/travelbuddy"
+  },
+  "devDependencies": {
+    "playwright": "^1.47.2",
+    "rimraf": "^6.0.1"
+  }
+}
