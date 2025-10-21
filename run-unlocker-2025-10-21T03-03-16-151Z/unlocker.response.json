@@ -1,0 +1,7 @@
+{
+  "status": 400,
+  "body": {
+    "code": 2,
+    "message": "generate cookie failed"
+  }
+}

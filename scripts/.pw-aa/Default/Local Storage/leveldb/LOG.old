@@ -1,0 +1,9 @@
+2025/10/21-11:11:56.160 a4c0 Reusing MANIFEST C:\Users\NicTippelt\OneDrive - Titan Telecoms\Documents\GitHub\travelbuddy\scripts\.pw-aa\Default\Local Storage\leveldb/MANIFEST-000001
+2025/10/21-11:11:56.167 a4c0 Recovering log #3
+2025/10/21-11:11:56.170 a4c0 Reusing old log C:\Users\NicTippelt\OneDrive - Titan Telecoms\Documents\GitHub\travelbuddy\scripts\.pw-aa\Default\Local Storage\leveldb/000003.log 
+2025/10/21-11:14:00.218 bd94 Level-0 table #5: started
+2025/10/21-11:14:00.226 bd94 Level-0 table #5: 34965 bytes OK
+2025/10/21-11:14:00.236 bd94 Delete type=0 #3
+2025/10/21-11:15:00.235 a4c0 Level-0 table #7: started
+2025/10/21-11:15:00.247 a4c0 Level-0 table #7: 33043 bytes OK
+2025/10/21-11:15:00.250 a4c0 Delete type=0 #4

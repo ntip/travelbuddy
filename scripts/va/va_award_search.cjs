@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * VA Award Search (FULL-B: incremental, screenshot mode, AUTO format)
+ * VA Award Search (FULL-B: incremental, screenshot modes, provider-aware)
  *
  * Modes ( --screens=... )
  *   fail     = only on failures  (default)
@@ -9,30 +9,31 @@
  *   trace    = verbose + per-request+per-response screenshots
  *
  * Screenshot format (AUTO):
- *   verbose/trace => webp (small)
+ *   verbose/trace => webp (smaller)
  *   final/failure => png (full fidelity)
  *
  * Output structure:
  *   storage/app/travelbuddy/
  *     ├─ va_bookingAirSearch.request.json   ← latest (overwritten)
  *     ├─ va_bookingAirSearch.response.json  ← latest (overwritten)
- *     ├─ run-2025-.../
- *     │    ├─ 1-request.json
- *     │    ├─ 1-response.json
- *     │    ├─ 1-trace-request.webp     (trace only)
- *     │    ├─ 1-trace-response.webp    (trace only)
- *     │    ├─ load.webp (verbose|trace)
- *     │    ├─ first-graphql.webp (verbose|trace)
- *     │    ├─ final.png (lite|verbose|trace)
- *     │    ├─ failure.png (all)
- *     │    └─ log.txt
+ *     ├─ run-<runId>/
+ *     │    └─ va/
+ *     │         ├─ 1-request.json
+ *     │         ├─ 1-response.json
+ *     │         ├─ 1-trace-request.webp     (trace only)
+ *     │         ├─ 1-trace-response.webp    (trace only)
+ *     │         ├─ load.webp                (verbose|trace)
+ *     │         ├─ first-graphql.webp       (verbose|trace)
+ *     │         ├─ final.png                (lite|verbose|trace)
+ *     │         ├─ failure.png              (all)
+ *     │         └─ log.txt
  */
 
 const fs = require("fs");
 const path = require("path");
 const { chromium } = require("playwright");
 
-/** CLI Helpers **/
+/** CLI helpers **/
 function arg(name, def) {
   const i = process.argv.indexOf(`--${name}`);
   if (i !== -1 && i + 1 < process.argv.length && !process.argv[i + 1].startsWith("--")) {
@@ -59,11 +60,11 @@ function appendLog(file, msg) {
 }
 
 /** AUTO screenshot helper */
-async function takeScreenshotAuto(page, runDir, name, logFile, screens) {
+async function takeScreenshotAuto(page, folder, name, logFile, screens) {
   const isFinalOrFail = (name === "final" || name === "failure");
   const useWebp = (screens === "trace" || screens === "verbose") && !isFinalOrFail;
   const ext = useWebp ? "webp" : "png";
-  const file = path.join(runDir, `${name}.${ext}`);
+  const file = path.join(folder, `${name}.${ext}`);
   try {
     await page.screenshot({ path: file, fullPage: true });
     appendLog(logFile, `[${new Date().toISOString()}] screenshot: ${name}.${ext}`);
@@ -88,14 +89,27 @@ async function takeScreenshotAuto(page, runDir, name, logFile, screens) {
   const timeout = parseInt(arg("timeout", "120000"), 10);
   const proxy = arg("proxy", null);
 
+  // NEW: orchestrator-friendly run id and provider
+  const runId = arg("runId", new Date().toISOString().replace(/[:.]/g, "-"));
+  const PROVIDER = "va";
+
   /** Create output folders */
   ensureDir(outDir);
-  const tsSafe = new Date().toISOString().replace(/[:.]/g, "-");
-  const runDir = path.join(outDir, `run-${tsSafe}`);
+  const runDir = path.join(outDir, `run-${runId}`);
   ensureDir(runDir);
-  const logFile = path.join(runDir, "log.txt");
+
+  // Provider subfolder inside the run
+  const providerDir = path.join(runDir, PROVIDER);
+  ensureDir(providerDir);
+
+  // Log lives inside provider folder
+  const logFile = path.join(providerDir, "log.txt");
   appendLog(logFile, `[start] ${new Date().toISOString()}`);
   appendLog(logFile, `[mode] screens=${screens}`);
+  appendLog(logFile, `[info] runId=${runId} provider=${PROVIDER}`);
+  appendLog(logFile, `[info] outDir=${outDir}`);
+  appendLog(logFile, `[info] runDir=${runDir}`);
+  appendLog(logFile, `[info] providerDir=${providerDir}`);
 
   /** Build booking URL (hash fragment SPA router) **/
   const base = new URL("https://book.virginaustralia.com/dx/VADX/");
@@ -121,31 +135,46 @@ async function takeScreenshotAuto(page, runDir, name, logFile, screens) {
   const userDataDir = path.resolve("scripts/.pw-state");
   const launchCommon = {
     headless: !headful,
-    args: ["--headless=new", "--no-sandbox", "--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"]
+    args: [
+      // only include the explicit headless flag when running headless
+      ...(!headful ? ["--headless=new"] : []),
+      "--no-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-blink-features=AutomationControlled"
+    ]
   };
+  appendLog(logFile, `[info] headful=${headful}`);
   if (proxy) launchCommon.proxy = { server: proxy };
-
+ 
   let context;
   try {
     context = await chromium.launchPersistentContext(userDataDir, {
       ...launchCommon,
       channel: "chrome",
-      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
       locale: "en-AU",
       timezoneId: "Australia/Brisbane",
       viewport: { width: 1400, height: 860 },
       ignoreHTTPSErrors: true,
-      extraHTTPHeaders: { "Accept-Language": "en-AU,en;q=0.9", "Referer": "https://www.virginaustralia.com/au/en/" }
+      extraHTTPHeaders: {
+        "Accept-Language": "en-AU,en;q=0.9",
+        "Referer": "https://www.virginaustralia.com/au/en/"
+      }
     });
   } catch {
     context = await chromium.launchPersistentContext(userDataDir, {
       ...launchCommon,
-      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       locale: "en-AU",
       timezoneId: "Australia/Brisbane",
       viewport: { width: 1400, height: 860 },
       ignoreHTTPSErrors: true,
-      extraHTTPHeaders: { "Accept-Language": "en-AU,en;q=0.9", "Referer": "https://www.virginaustralia.com/au/en/" }
+      extraHTTPHeaders: {
+        "Accept-Language": "en-AU,en;q=0.9",
+        "Referer": "https://www.virginaustralia.com/au/en/"
+      }
     });
   }
 
@@ -164,7 +193,7 @@ async function takeScreenshotAuto(page, runDir, name, logFile, screens) {
     appendLog(logFile, t);
   });
 
-  /** Anti automation tweaks */
+  /** Anti-automation tweaks */
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "webdriver", { get: () => undefined });
     const f = () => ({ length: 1, item: () => ({}) });
@@ -172,6 +201,7 @@ async function takeScreenshotAuto(page, runDir, name, logFile, screens) {
       Object.defineProperty(navigator, "plugins", { get: f });
       Object.defineProperty(navigator, "mimeTypes", { get: f });
     } catch {}
+    // eslint-disable-next-line no-undef
     window.chrome = window.chrome || { runtime: {} };
   });
 
@@ -184,6 +214,7 @@ async function takeScreenshotAuto(page, runDir, name, logFile, screens) {
   let firstRes = null;
   let haveAnyGraphQL200 = false;
   let tookFirstGraphqlShot = false;
+
   /** Capture GraphQL requests */
   page.on("request", async (req) => {
     try {
@@ -193,13 +224,13 @@ async function takeScreenshotAuto(page, runDir, name, logFile, screens) {
       const payload = JSON.parse(req.postData() || "null");
       const idx = ++seq;
 
-      const fileReq = path.join(runDir, `${idx}-request.json`);
+      const fileReq = path.join(providerDir, `${idx}-request.json`);
       writeJsonSafe(fileReq, payload);
       appendLog(logFile, `[${new Date().toISOString()}] ${idx}-request`);
 
       // request screenshots in TRACE mode
       if (screens === "trace") {
-        await takeScreenshotAuto(page, runDir, `${idx}-trace-request`, logFile, screens);
+        await takeScreenshotAuto(page, providerDir, `${idx}-trace-request`, logFile, screens);
       }
 
       if (!firstReq) firstReq = payload;
@@ -223,13 +254,13 @@ async function takeScreenshotAuto(page, runDir, name, logFile, screens) {
       let body;
       try { body = JSON.parse(text); } catch { body = text; }
 
-      const fileRes = path.join(runDir, `${idx}-response.json`);
+      const fileRes = path.join(providerDir, `${idx}-response.json`);
       writeJsonSafe(fileRes, body);
       appendLog(logFile, `[${new Date().toISOString()}] ${idx}-response`);
 
       // trace response screens
       if (screens === "trace") {
-        await takeScreenshotAuto(page, runDir, `${idx}-trace-response`, logFile, screens);
+        await takeScreenshotAuto(page, providerDir, `${idx}-trace-response`, logFile, screens);
       }
 
       if (res.status() === 200) haveAnyGraphQL200 = true;
@@ -241,18 +272,19 @@ async function takeScreenshotAuto(page, runDir, name, logFile, screens) {
           bookingRes = item;
           if (!tookFirstGraphqlShot && (screens === "verbose" || screens === "trace")) {
             tookFirstGraphqlShot = true;
-            await takeScreenshotAuto(page, runDir, "first-graphql", logFile, screens);
+            await takeScreenshotAuto(page, providerDir, "first-graphql", logFile, screens);
           }
         }
       }
     } catch {}
   });
 
-  /** main flow */
+  /** failure helper */
   async function doFailure() {
-    await takeScreenshotAuto(page, runDir, "failure", logFile, screens);
+    await takeScreenshotAuto(page, providerDir, "failure", logFile, screens);
   }
 
+  /** main flow */
   try {
     // warm VA homepage
     await page.goto("https://www.virginaustralia.com/au/en/", { waitUntil: "domcontentloaded" }).catch(() => {});
@@ -261,7 +293,7 @@ async function takeScreenshotAuto(page, runDir, name, logFile, screens) {
     // load SPA route
     await page.goto(bookingUrl, { waitUntil: "domcontentloaded" }).catch(() => {});
     if (screens === "verbose" || screens === "trace") {
-      await takeScreenshotAuto(page, runDir, "load", logFile, screens);
+      await takeScreenshotAuto(page, providerDir, "load", logFile, screens);
     }
 
     // wait until first graphql call yields 200
@@ -272,28 +304,46 @@ async function takeScreenshotAuto(page, runDir, name, logFile, screens) {
     await page.waitForLoadState("networkidle", { timeout }).catch(() => {});
     await page.waitForTimeout(300);
 
+    // choose primary; fall back to first pair
     const primaryReq = bookingReq || firstReq;
     const primaryRes = bookingRes || firstRes;
+
+    // latest (root) paths
     const latestReq = path.join(outDir, "va_bookingAirSearch.request.json");
     const latestRes = path.join(outDir, "va_bookingAirSearch.response.json");
 
-    if (primaryReq) writeJsonSafe(latestReq, primaryReq);
-    if (primaryRes) writeJsonSafe(latestRes, primaryRes);
+    // provider-scoped copies inside run/<id>/va/
+    const providerReq = path.join(providerDir, "va_bookingAirSearch.request.json");
+    const providerRes = path.join(providerDir, "va_bookingAirSearch.response.json");
+
+    if (primaryReq) {
+      writeJsonSafe(latestReq, primaryReq);
+      writeJsonSafe(providerReq, primaryReq);
+    }
+    if (primaryRes) {
+      writeJsonSafe(latestRes, primaryRes);
+      writeJsonSafe(providerRes, primaryRes);
+    }
 
     if (primaryRes || haveAnyGraphQL200) {
       if (screens === "lite" || screens === "verbose" || screens === "trace") {
-        await takeScreenshotAuto(page, runDir, "final", logFile, screens);
+        await takeScreenshotAuto(page, providerDir, "final", logFile, screens);
       }
       appendLog(logFile, "[done] success");
       console.log(JSON.stringify({
         ok: true,
+        provider: PROVIDER,
+        runId,
         origin,
         destination,
         date,
         outDir,
-        requestPath: primaryReq ? latestReq : null,
-        responsePath: primaryRes ? latestRes : null,
-        runDir
+        runDir,
+        providerDir,
+        requestPath: primaryReq ? latestReq : null,       // latest at root
+        responsePath: primaryRes ? latestRes : null,      // latest at root
+        providerRequestPath: primaryReq ? providerReq : null,
+        providerResponsePath: primaryRes ? providerRes : null
       }));
       process.exit(0);
     } else {
@@ -301,8 +351,11 @@ async function takeScreenshotAuto(page, runDir, name, logFile, screens) {
       appendLog(logFile, "[done] noGraphQL");
       console.error(JSON.stringify({
         ok: false,
-        reason: "NoGraphQLSeen",
-        runDir
+        provider: PROVIDER,
+        runId,
+        runDir,
+        providerDir,
+        reason: "NoGraphQLSeen"
       }));
       process.exit(1);
     }

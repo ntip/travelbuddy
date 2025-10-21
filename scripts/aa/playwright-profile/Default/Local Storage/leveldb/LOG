@@ -1,0 +1,8 @@
+2025/10/21-14:32:24.315 44c Creating DB C:\Users\NicTippelt\OneDrive - Titan Telecoms\Documents\GitHub\travelbuddy\scripts\aa\playwright-profile\Default\Local Storage\leveldb since it was missing.
+2025/10/21-14:32:24.353 44c Reusing MANIFEST C:\Users\NicTippelt\OneDrive - Titan Telecoms\Documents\GitHub\travelbuddy\scripts\aa\playwright-profile\Default\Local Storage\leveldb/MANIFEST-000001
+2025/10/21-14:34:37.565 9ed0 Level-0 table #5: started
+2025/10/21-14:34:37.571 9ed0 Level-0 table #5: 40815 bytes OK
+2025/10/21-14:34:37.573 9ed0 Delete type=0 #3
+2025/10/21-14:35:51.684 9ed0 Level-0 table #7: started
+2025/10/21-14:35:51.692 9ed0 Level-0 table #7: 87523 bytes OK
+2025/10/21-14:35:51.697 9ed0 Delete type=0 #4
